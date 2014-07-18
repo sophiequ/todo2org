@@ -1,0 +1,4 @@
+todo2org
+========
+
+A Python-based filter creating org-mode entries from email messages with a syntax similar to the org date/time prompt.
