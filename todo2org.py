@@ -1,4 +1,44 @@
 #!/usr/bin/env python
+# todo2org 0.2
+# Copyright 2014 Thomas Quaritsch, t.quaritsch@gmail.com
+# 
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+# 
+#       http://www.apache.org/licenses/LICENSE-2.0
+# 
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+# History
+# - 0.1 initial version
+# - 0.2 added argument parser, configurable output and logging
+#
+# ToDo:
+#  - [ ] emacsclient and org-protocol method (urlencode needed?)
+#  - [ ] test suite with messages
+
+
+CONFIG = {
+    # customize your configuration here by overwriting entries from DEFAULT_ENCODING, e.g.
+    # 'content_layout':   u"{body}"
+}
+
+DEFAULT_CONFIG = {
+    'time_separator': '#',
+    'org_entry_layout': u"* {subject}{timestamp}\n\n{content}\n",
+    'timestamp_layout': u"\nSCHEDULED: {timestamp}",
+    'content_layout':   u"From: {from}\nTo: {to}\nDate: {date}\nSubject: {subject}\n\n{body}"
+}
+
+##################################################################################################################
+# no configuration beyond this point, only change if know what you do :)
+##################################################################################################################
+
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta as rd, MO, TU, WE, TH, FR, SA, SU
 from email.Iterators import typed_subpart_iterator
@@ -11,35 +51,9 @@ import itertools
 import time
 import sys
 import argparse
+import traceback
 
 logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s', filename='todo2org.log', level=logging.DEBUG)
-
-"""
-ToDo:
- - [X] argparse
- - [X] Output encoding flag
- - [X] config variables
- - [X] entry template?
- - [ ] emacsclient and org-protocol method (urlencode needed?)
- - [ ] test suite with messages
- - [ ] logger
-"""
-
-CONFIG = {
-    # customize your configuration here by overwriting entries from DEFAULT_ENCODING, e.g.
-    # 'content_layout':   u"{body}"
-}
-
-
-##################################################################################################################
-
-DEFAULT_CONFIG = {
-    'time_separator': '#',
-    'org_entry_layout': u"* {subject}{timestamp}\n\n{content}\n",
-    'timestamp_layout': u"\nSCHEDULED: {timestamp}",
-    'content_layout':   u"From: {from}\nTo: {to}\nDate: {date}\nSubject: {subject}\n\n{body}"
-}
-
 
 def get_date_by_relative_str(curdate, relativestr):
     """
@@ -273,8 +287,11 @@ def message2org(message, outfile, config, encoding):
 
         logging.debug("calculated datetime is %s" % str(final_date))
 
-        timestamp_str = format_as_org_datetime(final_date) if final_date else ""
-        timestamp_str = config['timestamp_layout'].format(timestamp=timestamp_str)
+        if final_date:
+            timestamp_str = format_as_org_datetime(final_date) 
+            timestamp_str = config['timestamp_layout'].format(timestamp=timestamp_str)
+        else:
+            timestamp_str = ""
 
         msg_body = indent(remove_signature(msg_body[:1000].replace('\r', '')), "")
 
@@ -287,8 +304,8 @@ def message2org(message, outfile, config, encoding):
 
         logging.debug("final org-mode entry is %s" % org_str)
 
-    except Exception as e:
-        print e
+    except email.errors.MessageError as e:
+        traceback.print_exc()
 
         with open("debug.txt", "a") as logfile:
             logfile.write("="*80+"\n")
