@@ -6,7 +6,7 @@ Creating org-mode entries from email messages with a "To"-address syntax similar
 
 ** Intention
 
-todo2org can be used to create org-mode entries with timestamps from email messages. I use a dedicated mail domain (@todo.example) with catch-all activated, such that all mail is delivered to a single mailbox, regardless of the specific "To" address. Mail is then handed over to todo2org, which appends an org-mode entry to my ~inbox.org~ similar to MobileOrg. I can then refile those entries to wherever they belong. 
+todo2org can be used to create org-mode entries with timestamps from email messages. I use a dedicated mail domain (@todo.example) with catch-all activated, such that all mail is delivered to a single mailbox, regardless of the specific "To" address. Mail is then handed over to todo2org, which appends an org-mode entry to my ~inbox.org~ similar to MobileOrg. I can then refile those entries to wherever they belong. This way I can get all ToDos which pop up via email out of my inbox, and I can even set reminders to follow-up on specific emails by Bcc-ing them to a certain address. 
 
 *** Example
 
@@ -73,17 +73,17 @@ If you do not specify any parameters, it reads mail from standard input and prin
 
 *** Supported Recipient Address Formats
 
-The address of the "To" field of processed emails is in the format dayspec~#~timespec~@~domain, where dayspec is one of the following
+The address of the "To" field of processed emails is in the format dayspec ~#~ timespec ~@~ domain, where dayspec is one of the following
 
 - ~today~, ~tomorrow~ (can be abbreviated as to and tom)
-- ~monday~, ~tuesday~, ~wednesday~, ~thursday~, ~friday~, ~saturday~, ~sunday~ (any abbreviation up to ~mo~, ~tu~, ~we~, ~th~, ~fr~, ~sa~, su can be used)
+- ~monday~, ~tuesday~, ~wednesday~, ~thursday~, ~friday~, ~saturday~, ~sunday~ (any abbreviation up to ~mo~, ~tu~, ~we~, ~th~, ~fr~, ~sa~, ~su~ can be used)
 - ~XX~ (an integer specifying a day of the current (or next, if is past the current) day of month, e.g. on May 25, ~10~ would mean June 10. 
-- ~Xd~ (an integer followed by "d", specifying today + 7 days, e.g. ~2d~ means two days from now)
+- ~Xd~ (an integer followed by "d", specifying today + X days, e.g. ~2d~ means two days from now)
 - ~Xw~ (same with weeks)
 - ~Xm~ (same with months)
 - ~Xy~ (same with years)
 - ~XX-YY~ (two integers separated by hypen, ~XX~ specifies the month and ~YY~ the day of the month, e.g. ~7-17~ would mean July 17)
-- ~monthXX~ (where month is either ~january~, ~february~, ...,  ~december~, where any abbreviation up to ~jan~, ~feb~, ..., ~dec~ can be used)
+- ~monthXX~ (where month is either ~january~, ~february~, ...,  ~december~, any abbreviation up to ~jan~, ~feb~, ..., ~dec~ can be used)
 - ~ZZZZ-XX-YY~ (a full date in ISO format)
 
 timespec may be
