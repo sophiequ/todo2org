@@ -3,22 +3,43 @@ from datetime import datetime, date
 from dateutil.relativedelta import relativedelta as rd, MO, TU, WE, TH, FR, SA, SU
 from email.Iterators import typed_subpart_iterator
 from email.header import decode_header
+import logging
 import re
+import os
 import email
-import fileinput
 import itertools
 import time
 import sys
+import argparse
+
+logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s', filename='todo2org.log', level=logging.DEBUG)
 
 """
 ToDo:
- - [ ] argparse
- - [ ] config variables
- - [ ] entry template?
+ - [X] argparse
+ - [X] Output encoding flag
+ - [X] config variables
+ - [X] entry template?
  - [ ] emacsclient and org-protocol method (urlencode needed?)
  - [ ] test suite with messages
-
+ - [ ] logger
 """
+
+CONFIG = {
+    # customize your configuration here by overwriting entries from DEFAULT_ENCODING, e.g.
+    # 'content_layout':   u"{body}"
+}
+
+
+##################################################################################################################
+
+DEFAULT_CONFIG = {
+    'time_separator': '#',
+    'org_entry_layout': u"* {subject}{timestamp}\n\n{content}\n",
+    'timestamp_layout': u"\nSCHEDULED: {timestamp}",
+    'content_layout':   u"From: {from}\nTo: {to}\nDate: {date}\nSubject: {subject}\n\n{body}"
+}
+
 
 def get_date_by_relative_str(curdate, relativestr):
     """
@@ -75,7 +96,7 @@ def get_date_by_relative_str(curdate, relativestr):
     >>> print get_date_by_relative_str(datetime(2014,07,17,12,30,59), "4-3#1035")
     2014-04-03 10:35:00
     >>> print get_date_by_relative_str(datetime(2014,02,01,12,30,59), "t#2014")
-    10-02-01 10:00:00
+    2014-02-01 20:14:00
     >>> print get_date_by_relative_str(date(2014,02,05), "today")
     2014-02-05
     """
@@ -116,13 +137,12 @@ def get_date_by_relative_str(curdate, relativestr):
         r"([0-9]{2})([0-9]{2})"      : lambda d, m: d + rd(hour=int(m[0]), minute=int(m[1]), second=0),
     })
 
-
     if '#' in relativestr:
-        daterelativestr, timerelativestr = relativestr.split("#",2)
+        daterelativestr, timerelativestr = relativestr.split("#", 2)
     else:
         daterelativestr = relativestr
         timerelativestr = None
-    
+
     retval = None
 
     for datepatternstr, dateevaluator in DATE_MATCHERS.iteritems():
@@ -136,14 +156,14 @@ def get_date_by_relative_str(curdate, relativestr):
             matchgr = re.match(timepatternstr, timerelativestr)
             if matchgr:
                 retval = timeevaluator(retval, matchgr.groups())
-                     
+
     return retval
 
 
 def format_as_org_datetime(dateordatetime, active=True):
     """
     return a date or datetime object in org-format
-    
+
     >>> print format_as_org_datetime(datetime(2014,07,17,12,30,59))
     <2014-07-17 Thu 12:30>
     >>> print format_as_org_datetime(datetime(2014,07,17,12,30,59), active=False)
@@ -158,32 +178,33 @@ def format_as_org_datetime(dateordatetime, active=True):
     encl = lambda x: "<%s>" % x if active else "[%s]" % x
 
     try:
-        dateordatetime.time() # check if a datetime
+        dateordatetime.time()  # check if a datetime
         return encl(dateordatetime.strftime("%Y-%m-%d %a %H:%M"))
     except:
         return encl(dateordatetime.strftime("%Y-%m-%d %a"))
 
-    
+
 def get_message_header(header_text, default="ascii"):
     """Decode the specified header"""
     # from http://ginstrom.com/scribbles/2007/11/19/parsing-multilingual-email-with-python/
-    
+
     headers = decode_header(header_text)
     header_sections = [unicode(text, charset or default) for text, charset in headers]
     return u"".join(header_sections)
-    
+
 
 def get_message_charset(message, default="ascii"):
     """Get the message charset"""
     # from http://ginstrom.com/scribbles/2007/11/19/parsing-multilingual-email-with-python/
-    
+
     if message.get_content_charset():
         return message.get_content_charset()
-        
+
     if message.get_charset():
         return message.get_charset()
 
     return default
+
 
 def get_message_body(message):
     """Get the body of the email message"""
@@ -197,7 +218,7 @@ def get_message_body(message):
             body.append(unicode(part.get_payload(decode=True), charset, "replace"))
         return u"\n".join(body).strip()
 
-    else: 
+    else:
         if message.get_content_type() == "text/plain":
             body = unicode(message.get_payload(decode=True), get_message_charset(message), "replace")
             return body.strip()
@@ -213,22 +234,7 @@ def indent(bodystr, indentation):
     return bodystr.replace("\n", "\n"+indentation)
 
 
-if __name__ == "__main__":
-    import doctest
-    doctest.testmod()
-
-    messagestr = sys.stdin.read()
-
-    if len(sys.argv) > 1:
-        outfile_name = sys.argv[1]
-    else:
-        outfile_name = None
-
-    if not messagestr:
-        sys.exit()
-
-    output_data = ""
-
+def message2org(message, outfile, config, encoding):
     try:
 
         message = email.message_from_string(messagestr)
@@ -238,41 +244,48 @@ if __name__ == "__main__":
             logfile.write(str(datetime.now()) + "\n")
             logfile.write(str(message))
 
-            
         msg_charset = get_message_charset(message)
-        # print msg_charset
-        msg_subject = get_message_header(message['Subject'] or "No Subject", default=msg_charset) 
-        # print msg_subject
-        msg_to      = get_message_header(message['To'], default=msg_charset)
-        # print msg_to
-        msg_body    = get_message_body(message)
-        # print msg_body
-        msg_date    = email.utils.parsedate(message['Date'])
+        logging.debug("charset is " + msg_charset)
+
+        msg_subject = get_message_header(message['Subject'] or "No Subject", default=msg_charset)
+        logging.debug("subject is " + msg_subject)
+
+        msg_from = get_message_header(message['From'], default=msg_charset)
+        logging.debug("from is %s" % msg_from)
+
+        msg_to = get_message_header(message['To'], default=msg_charset)
+        logging.debug("to is %s" % msg_to)
+
+        msg_date = email.utils.parsedate(message['Date'])
+        logging.debug("date is %s" % str(msg_date))
+
+        msg_body = get_message_body(message)
+        logging.debug("body is %s" % msg_body)
+
+        relative_str = msg_to.split("@", 1)[0]
+
         if msg_date:
             curdate = date.fromtimestamp(time.mktime(msg_date))
         else:
-            curdate = datetime.now() if '#' in relative_str else date.today()
-        # print curdate
+            curdate = datetime.now() if config['time_separator'] in relative_str else date.today()
 
-
-        # print "Subject:", msg_subject
-        # print "To:", msg_to
-        # print msg_body
-
-        relative_str = msg_to.split("@", 1)[0]
         final_date = get_date_by_relative_str(curdate, relative_str)
-        scheduled_str = "\nSCHEDULED: " + format_as_org_datetime(final_date) if final_date else ""
 
+        logging.debug("calculated datetime is %s" % str(final_date))
 
-        org_data  = dict({'subject': msg_subject, 
-                          'scheduled': scheduled_str, 
-                          'content': indent(remove_signature(msg_body[:1000].replace('\r', '')), "")})
+        timestamp_str = format_as_org_datetime(final_date) if final_date else ""
+        timestamp_str = config['timestamp_layout'].format(timestamp=timestamp_str)
 
-        org_entry = u"""* {subject}{scheduled}\n\n{content}""".format(**org_data)
+        msg_body = indent(remove_signature(msg_body[:1000].replace('\r', '')), "")
 
-        # print org_entry
+        content_data = dict({'from': msg_from, 'to': msg_to, 'date': message['Date'], 'subject': msg_subject,
+                             'body': msg_body})
+        content_str = config['content_layout'].format(**content_data)
 
-        output_data = org_entry
+        org_data = dict({'subject': msg_subject, 'timestamp': timestamp_str, 'content': content_str})
+        org_str = config['org_entry_layout'].format(**org_data)
+
+        logging.debug("final org-mode entry is %s" % org_str)
 
     except Exception as e:
         print e
@@ -281,13 +294,62 @@ if __name__ == "__main__":
             logfile.write("="*80+"\n")
             logfile.write(str(e))
 
-        output_data = u"""* Error parsing message:\n\n%s""" % indent(messagestr[:2000], "")
+        org_str = u"""* Error parsing message:\n\n%s""" % indent(messagestr[:2000], "")
 
     finally:
 
-        if outfile_name:
-            with open(outfile_name, 'ab') as outfile:
-                outfile.write(output_data.encode("UTF-8"))
-        else:
-            print output_data
+        outfile.write(org_str.encode(encoding))
 
+
+def merge(opts1, opts2):
+    """ merge two dicts, where opts2 overrides opts1 """
+    return dict(opts1.items() + opts2.items())
+
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()
+
+    parser = argparse.ArgumentParser(description='Append email messages with special "To"-addresses to an \
+                                     org-mode file.')
+    parser.add_argument('-i', metavar='inputfile', type=argparse.FileType('r'),  dest='infile', action='store',
+                        help='file to read the email from (default: stdin)', default='-')
+    parser.add_argument('-o', metavar='outputfile', type=str,  dest='outfile', action='store',
+                        help='org-mode file to write the message content to (default: stdout)')
+
+    appendmode = parser.add_mutually_exclusive_group()
+    appendmode.add_argument('--append', '-a', dest='appendmode', action='store_true', default=True,
+                            help='append the org-mode entry to the given file (default: %(default)s)')
+    appendmode.add_argument('--no-append', dest='appendmode', action='store_false', default=False,
+                            help='overwrite the given output file (default: %(default)s)')
+
+    parser.add_argument('--encoding', metavar='enc', type=str, dest='encoding', action='store', default='utf8',
+                        help='output encoding to use, see list of available encodings at \
+                        https://docs.python.org/2/library/codecs.html#standard-encodings (default: %(default)s)')
+
+    args = parser.parse_args()
+
+    messagestr = args.infile.read()
+
+    logging.info('started as ' + str(sys.argv))
+
+    if not messagestr:
+        sys.exit()
+
+    try:
+
+        if args.outfile:
+            if os.path.isfile(args.outfile):
+                outfile = open(args.outfile, 'ab')
+            else:
+                outfile = open(args.outfile, 'wb')
+
+        else:
+            outfile = sys.stdout
+
+        message2org(messagestr, outfile, merge(DEFAULT_CONFIG, CONFIG), encoding=args.encoding)
+
+    finally:
+        outfile.close()
+
+        logging.info('terminated')
